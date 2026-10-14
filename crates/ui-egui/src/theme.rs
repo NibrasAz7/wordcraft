@@ -334,22 +334,24 @@ pub fn install_fonts(ctx: &egui::Context) {
 /// [`install_fonts`] with the CJK fallback order for the interface language: the Chinese face
 /// first for Chinese (#8), the Japanese one otherwise. The new fonts apply from the next frame.
 pub fn install_fonts_for(ctx: &egui::Context, prefer_hans: bool) {
-    install_fonts_with(ctx, prefer_hans, false);
+    install_fonts_with(ctx, prefer_hans, false, false);
 }
 
 /// [`install_fonts_for`], also adding an installed CJK font after the embedded faces when
 /// `system_cjk` is set and the embedded faces leave CJK characters of the interface text without
-/// a glyph (#241, #486). Reading that font is a large file read, so callers ask for it only when
-/// CJK text is on screen: a CJK interface language, or the language names in Options.
-pub fn install_fonts_with(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool) {
-    install_fonts_extra(ctx, prefer_hans, system_cjk, &[]);
+/// a glyph (#241, #486), and an installed Arabic font when `system_arabic` is set (the Arabic
+/// interface's own text). Reading those fonts is a large file read, so callers ask for them only
+/// when such text is on screen: a CJK or Arabic interface language, or the language names in
+/// Options.
+pub fn install_fonts_with(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, system_arabic: bool) {
+    install_fonts_extra(ctx, prefer_hans, system_cjk, system_arabic, &[]);
 }
 
 /// [`install_fonts_with`], also adding document-font `faces` as last-resort fallbacks (#565): the
 /// faces that cover text the interface fonts cannot draw (an input method's composition, or a
 /// file name in the window caption).
-pub fn install_fonts_extra(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, faces: &[Arc<wordcraft_fonts::FontFace>]) {
-    let mut fonts = font_definitions(prefer_hans, system_cjk);
+pub fn install_fonts_extra(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, system_arabic: bool, faces: &[Arc<wordcraft_fonts::FontFace>]) {
+    let mut fonts = font_definitions(prefer_hans, system_cjk, system_arabic);
     add_fallback_faces(&mut fonts, faces);
     ctx.set_fonts(fonts);
 }
@@ -399,7 +401,7 @@ pub fn faces_for_preedit(
 }
 
 /// The interface fonts; see [`install_fonts_with`].
-pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions {
+pub fn font_definitions(prefer_hans: bool, system_cjk: bool, system_arabic: bool) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
@@ -440,8 +442,16 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
         data.index = f.index;
         add_cjk(&mut fonts, format!("system {}", f.family), data);
     }
+    // The Arabic interface's text is Arabic script throughout, and the embedded faces have no
+    // Arabic glyphs: an installed Arabic font after them, so it does not draw as boxes or `?`.
+    #[cfg(not(target_arch = "wasm32"))]
+    if system_arabic && let Some(f) = system_arabic_font() {
+        let mut data = FontData::from_static(&f.bytes);
+        data.index = f.index;
+        add_cjk(&mut fonts, format!("system {}", f.family), data);
+    }
     #[cfg(target_arch = "wasm32")]
-    let _ = system_cjk;
+    let _ = (system_cjk, system_arabic);
     // Symbols and emoji fall back to egui's defaults (kept in the families).
     fonts
 }
@@ -469,6 +479,25 @@ fn system_cjk_font(hans: bool) -> Option<&'static wordcraft_fonts::SystemUiFont>
             wordcraft_fonts::system_cjk_ui_font(hans, &needed)
         })
         .as_ref()
+}
+
+/// The installed Arabic interface font, chosen once, for the Arabic interface's text
+/// ([`crate::i18n::Lang::arabic_font_text`]); `None` when the embedded faces already cover it or
+/// no candidate is installed.
+#[cfg(not(target_arch = "wasm32"))]
+fn system_arabic_font() -> Option<&'static wordcraft_fonts::SystemUiFont> {
+    static AR: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
+    AR.get_or_init(|| {
+        let embedded = wordcraft_fonts::ui_cjk_fonts(false);
+        let text = crate::i18n::Lang::arabic_font_text();
+        let needed = wordcraft_fonts::ui_uncovered_arabic(&[&text], &embedded);
+        if needed.is_empty() {
+            return None;
+        }
+        log::debug!("interface: {} Arabic characters lack an embedded glyph", needed.len());
+        wordcraft_fonts::system_arabic_ui_font(&needed)
+    })
+    .as_ref()
 }
 
 pub fn medium(size: f32) -> FontId {
@@ -690,7 +719,7 @@ mod tests {
         assert!(super::faces_for_preedit(bangla, &got, |_| false, lookup).is_empty(), "already added");
         assert!(super::faces_for_preedit(bangla, &[], |_| true, lookup).is_empty(), "the interface fonts draw it");
         assert!(super::faces_for_preedit("abc", &[], |_| false, lookup).is_empty(), "ASCII never needs one");
-        let mut defs = super::font_definitions(false, false);
+        let mut defs = super::font_definitions(false, false, false);
         let before = defs.font_data.len();
         super::add_fallback_faces(&mut defs, &got);
         assert_eq!(defs.font_data.len(), before + 1);
@@ -714,7 +743,7 @@ mod tests {
         assert!(super::faces_for_preedit(hebrew, &got, super::caption_char_covered, lookup).is_empty(), "already added");
         assert!(super::faces_for_preedit("文档", &[], super::caption_char_covered, lookup).is_empty(), "CJK uses the CJK UI font");
         assert!(super::faces_for_preedit("report", &[], super::caption_char_covered, lookup).is_empty(), "Latin needs nothing");
-        let mut defs = super::font_definitions(false, false);
+        let mut defs = super::font_definitions(false, false, false);
         super::add_fallback_faces(&mut defs, &got);
         let semi = &defs.families[&egui::FontFamily::Name("semibold".into())];
         assert!(semi.iter().any(|n| n.starts_with("fallback ")), "the caption is painted with semibold");
@@ -745,7 +774,7 @@ mod tests {
     #[test]
     fn interface_symbols_have_glyphs() {
         let ctx = egui::Context::default();
-        ctx.set_fonts(super::font_definitions(false, false));
+        ctx.set_fonts(super::font_definitions(false, false, false));
         ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut symbols = BTreeSet::new();

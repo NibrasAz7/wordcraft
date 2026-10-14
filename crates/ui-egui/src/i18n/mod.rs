@@ -48,12 +48,15 @@ pub struct LangInfo {
     /// The language (BCP 47) new blank documents are written in with this interface, for
     /// languages WordCraft can proof; `None` keeps WordCraft's default, US English.
     pub editing_lang: Option<&'static str>,
+    /// Read right to left (Arabic): the catalog's translations are put into display order when
+    /// it loads ([`crate::bidi::display_rtl`]), and its text wants an Arabic-capable font.
+    pub rtl: bool,
     catalog: OnceLock<Catalog>,
 }
 
 /// The registry. English first: it is the fallback and the source language.
-pub static LANGUAGES: [LangInfo; 19] = [
-    LangInfo { code: "en", name: "English", source: "", prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+pub static LANGUAGES: [LangInfo; 20] = [
+    LangInfo { code: "en", name: "English", source: "", prefer_hans: false, editing_lang: None, rtl: false, catalog: OnceLock::new() },
     // Simplified Chinese; `zh`, `zh-CN`, `zh-SG` and `zh-Hans-*` resolve here (see `candidates`).
     LangInfo {
         code: "zh-hans",
@@ -61,6 +64,7 @@ pub static LANGUAGES: [LangInfo; 19] = [
         source: include_str!("zh-hans.tsv"),
         prefer_hans: true,
         editing_lang: None,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     // Traditional Chinese (Taiwan vocabulary); `zh-TW`, `zh-HK`, `zh-MO` and `zh-Hant-*` resolve here.
@@ -70,14 +74,37 @@ pub static LANGUAGES: [LangInfo; 19] = [
         source: include_str!("zh-hant.tsv"),
         prefer_hans: true,
         editing_lang: None,
+        rtl: false,
         catalog: OnceLock::new(),
     },
-    LangInfo { code: "ja", name: "日本語", source: include_str!("ja.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
     LangInfo {
-        code: "uk", name: "Українська", source: include_str!("uk.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new()
+        code: "ja",
+        name: "日本語",
+        source: include_str!("ja.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "uk",
+        name: "Українська",
+        source: include_str!("uk.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
     },
     // Spanish, neutral across Spain and Latin America; `es-ES`, `es-MX`, `es-419` … resolve here.
-    LangInfo { code: "es", name: "Español", source: include_str!("es.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "es",
+        name: "Español",
+        source: include_str!("es.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Brazilian Portuguese; `pt-BR` and `pt-BR-*` resolve here. Plain `pt` and `pt-PT` have no
     // catalog yet (the European vocabulary differs), so they stay in English.
     LangInfo {
@@ -86,11 +113,20 @@ pub static LANGUAGES: [LangInfo; 19] = [
         source: include_str!("pt-br.tsv"),
         prefer_hans: false,
         editing_lang: Some("pt-BR"),
+        rtl: false,
         catalog: OnceLock::new(),
     },
     // Serbian, Cyrillic script (the default per BCP 47 when no script is given); `sr`, `sr-RS`,
     // `sr-Cyrl-*` resolve here.
-    LangInfo { code: "sr", name: "Српски", source: include_str!("sr.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "sr",
+        name: "Српски",
+        source: include_str!("sr.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Serbian, Latin script; `sr-Latn-*` resolves here (see `candidates`'s generic prefix
     // matching — no special-casing needed, unlike Chinese's script-by-region fallback).
     LangInfo {
@@ -99,6 +135,7 @@ pub static LANGUAGES: [LangInfo; 19] = [
         source: include_str!("sr-latn.tsv"),
         prefer_hans: false,
         editing_lang: None,
+        rtl: false,
         catalog: OnceLock::new(),
     },
     // Polish; `pl`, `pl-PL` and `pl_PL.UTF-8` resolve here. WordCraft proofs Polish (spelling,
@@ -109,34 +146,123 @@ pub static LANGUAGES: [LangInfo; 19] = [
         source: include_str!("pl.tsv"),
         prefer_hans: false,
         editing_lang: Some("pl-PL"),
+        rtl: false,
         catalog: OnceLock::new(),
     },
-    LangInfo { code: "cs", name: "Čeština", source: include_str!("cs.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
-    LangInfo { code: "et", name: "Eesti", source: include_str!("et.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "cs",
+        name: "Čeština",
+        source: include_str!("cs.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "et",
+        name: "Eesti",
+        source: include_str!("et.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // German, neutral across Germany, Austria and Switzerland; `de`, `de-DE`, `de-AT`, `de-CH` …
     // resolve here.
-    LangInfo { code: "de", name: "Deutsch", source: include_str!("de.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "de",
+        name: "Deutsch",
+        source: include_str!("de.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Russian; `ru`, `ru-RU`, `ru_RU.UTF-8` and other regions resolve here.
-    LangInfo { code: "ru", name: "Русский", source: include_str!("ru.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
-    LangInfo { code: "tr", name: "Türkçe", source: include_str!("tr.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "ru",
+        name: "Русский",
+        source: include_str!("ru.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
+    LangInfo {
+        code: "tr",
+        name: "Türkçe",
+        source: include_str!("tr.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Italian; `it-IT`, `it-CH` and `it-*` resolve here.
-    LangInfo { code: "it", name: "Italiano", source: include_str!("it.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "it",
+        name: "Italiano",
+        source: include_str!("it.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Hungarian; `hu`, `hu-HU` and `hu_HU.UTF-8` resolve here.
-    LangInfo { code: "hu", name: "Magyar", source: include_str!("hu.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "hu",
+        name: "Magyar",
+        source: include_str!("hu.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // French; `fr`, `fr-FR`, `fr_CA` and other regions resolve here.
-    LangInfo { code: "fr", name: "Français", source: include_str!("fr.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new() },
+    LangInfo {
+        code: "fr",
+        name: "Français",
+        source: include_str!("fr.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
     // Bulgarian; `bg`, `bg-BG` and `bg_BG.UTF-8` resolve here.
     LangInfo {
-        code: "bg", name: "Български", source: include_str!("bg.tsv"), prefer_hans: false, editing_lang: None, catalog: OnceLock::new()
+        code: "bg",
+        name: "Български",
+        source: include_str!("bg.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: false,
+        catalog: OnceLock::new(),
+    },
+    // Arabic, Modern Standard; `ar`, `ar-SA`, `ar-EG` and the other `ar-*` locales resolve here.
+    // The interface text reads right to left: the catalog's translations are put into display
+    // order at load (`rtl`), and an installed Arabic font is borrowed for its glyphs. WordCraft
+    // has no Arabic proofing, so documents keep the default editing language.
+    LangInfo {
+        code: "ar",
+        name: "العربية",
+        source: include_str!("ar.tsv"),
+        prefer_hans: false,
+        editing_lang: None,
+        rtl: true,
+        catalog: OnceLock::new(),
     },
 ];
 
 impl LangInfo {
     fn catalog(&self) -> &Catalog {
         self.catalog.get_or_init(|| {
-            let (catalog, errors) = Catalog::parse(self.source);
+            let (mut catalog, errors) = Catalog::parse(self.source);
             for error in errors {
                 log::warn!("{} interface catalog: {error}; that entry shows in English", self.code);
+            }
+            if self.rtl {
+                // egui lays each line out left to right; the right-to-left catalog's
+                // translations are stored in display order instead.
+                catalog.map_translations(crate::bidi::display_rtl);
             }
             catalog
         })
@@ -186,12 +312,30 @@ impl Lang {
         self.0.name.chars().any(|c| ('\u{2E80}'..='\u{9FFF}').contains(&c) || ('\u{AC00}'..='\u{D7AF}').contains(&c))
     }
 
+    /// Does the interface text need an Arabic-capable face (the catalog's own script)? The
+    /// embedded interface faces have no Arabic glyphs, so it is drawn with an installed system
+    /// font ([`crate::theme::install_fonts_with`]'s Arabic fallback).
+    pub fn uses_arabic(self) -> bool {
+        self.0.rtl
+    }
+
     /// The CJK interface text the fonts must cover with the Chinese (`hans`) or other CJK fallback
     /// order: the catalogs of the CJK languages using that order, and every language's own name (the
     /// Options list). The interface fonts check the embedded faces against it (#486).
     pub fn cjk_font_text(hans: bool) -> (Vec<&'static str>, String) {
         let catalogs = Lang::all().filter(|l| l.uses_cjk() && l.prefers_hans() == hans).map(|l| l.0.source).collect();
         (catalogs, Lang::all().map(Lang::name).collect::<Vec<_>>().join(" "))
+    }
+
+    /// The Arabic interface text an Arabic-capable face must cover: the right-to-left catalogs
+    /// and every language's own name (the Options list). For picking an installed Arabic font
+    /// ([`wordcraft_fonts::system_arabic_ui_font`]); [`cjk_font_text`](Lang::cjk_font_text) is the
+    /// CJK counterpart.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn arabic_font_text() -> String {
+        let mut s: String = LANGUAGES.iter().filter(|l| l.rtl).map(|l| l.source).collect();
+        s.extend(Lang::all().map(Lang::name));
+        s
     }
 
     /// A language by its exact code (any case).
@@ -375,7 +519,7 @@ pub fn tr(lang: Lang, s: &str) -> &str {
 /// the current language, styles the author made exactly as named. Display only: the document,
 /// commands and saved files keep the English name.
 pub fn style_name(style: &wordcraft_doc::Style) -> String {
-    if style.builtin { builtin_style_name(&style.name) } else { style.name.clone() }
+    if style.builtin { builtin_style_name(&style.name) } else { crate::bidi::visual(&style.name).into_owned() }
 }
 
 /// A built-in style's English name in the current language; numbered families go through one

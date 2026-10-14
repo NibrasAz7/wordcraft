@@ -418,7 +418,7 @@ fn chinese_interface_fonts_load_and_cover_simplified_hanzi() {
     // #241: without an embedded Chinese face the interface adds an installed CJK font; egui must
     // accept it (it panics on font data it can't parse) and draw simplified-only hanzi with it.
     let ctx = egui::Context::default();
-    ctx.set_fonts(crate::theme::font_definitions(true, true));
+    ctx.set_fonts(crate::theme::font_definitions(true, true, false));
     ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
     let covered = ctx.fonts_mut(|f| f.has_glyphs(&egui::FontId::proportional(14.0), "删除页选"));
     let (catalogs, _) = Lang::cjk_font_text(true);
@@ -443,7 +443,7 @@ fn cjk_catalogs_are_covered_by_the_embedded_interface_faces() {
     for code in ["zh-hans", "zh-hant", "ja"] {
         let l = lang(code);
         let ctx = egui::Context::default();
-        ctx.set_fonts(crate::theme::font_definitions(l.prefers_hans(), false));
+        ctx.set_fonts(crate::theme::font_definitions(l.prefers_hans(), false, false));
         ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
         let (entries, errors) = parse_entries(l.0.source);
         assert!(errors.is_empty(), "{code}: {errors:?}");
@@ -1190,4 +1190,86 @@ fn bundled_interface_fonts_cover_bulgarian_without_system_fallbacks() {
         }
     }
     assert!(!lang("bg").uses_cjk());
+}
+
+#[test]
+fn arabic_is_registered_and_persists() {
+    let ar = lang("ar");
+    assert_eq!(ar.name(), "العربية");
+    assert!(ar.uses_arabic());
+    assert_eq!(ar.editing_lang(), None, "WordCraft has no Arabic proofing");
+    assert!(Lang::all().filter(|l| l.uses_arabic()).eq([ar]), "Arabic is the only right-to-left language");
+    assert_eq!(normalize_pref("AR"), Some("ar"));
+    for tag in ["ar", "ar-MA", "ar_EG.UTF-8", "AR-sa", "ar_DZ@variant"] {
+        assert_eq!(lang_from_tag(tag), Some(ar), "{tag}");
+    }
+    assert_eq!(first_supported([UNSUPPORTED, "ar-MA", "en-US"]), Some(ar));
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+    let before = serde_json::to_value(&app.session.doc).unwrap();
+    let result = app.run("ui.language", serde_json::json!({"value": "AR"})).unwrap();
+    assert_eq!(result["effective"], "ar");
+    assert_eq!(app.ui.language, "ar");
+    // The interface language never changes the document.
+    assert_eq!(serde_json::to_value(&app.session.doc).unwrap(), before);
+    let saved = serde_json::to_string(&app.ui).unwrap();
+    let restored: crate::UiState = serde_json::from_str(&saved).unwrap();
+    assert_eq!(Lang::from_pref(&restored.language), ar);
+}
+
+/// Lookups return Arabic in display order: egui draws the words left to right as given, and
+/// joins the letters of each word itself.
+#[test]
+fn arabic_lookups_are_in_display_order() {
+    let ar = lang("ar");
+    // "حفظ باسم" as typed: the second word ends up on the left.
+    assert_eq!(tr(ar, "Save As"), "باسم حفظ");
+    // Latin names keep their own direction inside the phrase.
+    assert_eq!(tr(ar, "About WordCraft"), "WordCraft حول");
+    assert_eq!(tr(ar, "Home"), "الرئيسي الشريط");
+    // Placeholders survive and are filled in place.
+    assert_eq!(fmt(tr(ar, "Page {page} of {pages}"), &[("page", "3"), ("pages", "12")]), "12 من 3 الصفحة");
+    // Unknown strings and user text are never reordered by a lookup.
+    assert_eq!(tr(ar, "تقرير نهائي {n}.docx"), "تقرير نهائي {n}.docx");
+    assert_eq!(tr(ar, "no such label"), "no such label");
+}
+
+#[test]
+fn arabic_covers_the_entire_existing_interface_catalog() {
+    use std::collections::HashSet;
+    let keys = |source| parse_entries(source).0.into_iter().map(|e| e.source).collect::<HashSet<_>>();
+    assert_eq!(keys(lang("ar").0.source), keys(lang("de").0.source));
+    let ar = lang("ar");
+    assert_eq!(tr(ar, "File"), "ملف");
+    assert_eq!(tr(ar, "Save"), "حفظ");
+    assert_eq!(tr(ar, "Review"), "مراجعة");
+    assert_eq!(fmt(tr(ar, "Exported {path}"), &[("path", "draft-1.docx")]), "draft-1.docx صُدِّر");
+}
+
+#[test]
+fn only_the_arabic_interface_asks_for_an_installed_arabic_font() {
+    // The #241 rule's counterpart for Arabic: an English interface must not read a system
+    // Arabic font on startup.
+    let arabic: Vec<&str> = Lang::all().filter(|l| l.uses_arabic()).map(Lang::code).collect();
+    assert_eq!(arabic, ["ar"]);
+}
+
+#[test]
+fn arabic_interface_fonts_load_and_cover_arabic() {
+    // The embedded faces have no Arabic glyphs; the interface borrows an installed Arabic
+    // font. Where the machine has none (a minimal server, a craft-fonts-less web build)
+    // there is nothing to check, as in the CJK test.
+    #[cfg(not(target_arch = "wasm32"))]
+    if wordcraft_fonts::system_arabic_ui_font(&['ا']).is_some() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(crate::theme::font_definitions(false, false, true));
+        ctx.run_ui(Default::default(), |_| {}).textures_delta.clear();
+        let ar = lang("ar");
+        let (entries, errors) = parse_entries(ar.0.source);
+        assert!(errors.is_empty());
+        let chars: std::collections::BTreeSet<char> =
+            entries.iter().flat_map(|e| e.translation.chars()).chain(ar.name().chars()).filter(|c| wordcraft_fonts::is_arabic(*c)).collect();
+        assert!(chars.len() > 40, "only {} Arabic characters in the catalog", chars.len());
+        let missing: String = ctx.fonts_mut(|f| chars.iter().filter(|c| !f.has_glyph(&egui::FontId::proportional(14.0), **c)).collect());
+        assert!(missing.is_empty(), "the interface font chain lacks Arabic glyphs for {missing}");
+    }
 }

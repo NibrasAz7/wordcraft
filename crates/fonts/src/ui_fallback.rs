@@ -57,6 +57,50 @@ pub fn ui_needs_system_cjk(texts: &[&str], embedded: &[&CraftFont]) -> bool {
     !ui_uncovered_cjk(texts, embedded).is_empty()
 }
 
+/// Is `c` drawn from an Arabic-script font: the Arabic blocks and their presentation forms?
+/// (The interface's Latin faces have no Arabic glyphs.)
+pub fn is_arabic(c: char) -> bool {
+    matches!(u32::from(c), 0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF)
+}
+
+/// The distinct Arabic characters of `texts` (see [`is_arabic`]) that none of the `embedded`
+/// faces maps, in code point order — the [`ui_uncovered_cjk`] check for the Arabic catalog.
+pub fn ui_uncovered_arabic(texts: &[&str], embedded: &[&CraftFont]) -> Vec<char> {
+    let faces: Vec<_> = embedded.iter().filter_map(|f| skrifa::FontRef::from_index(f.bytes, 0).ok()).map(|f| f.charmap()).collect();
+    let chars: std::collections::BTreeSet<char> = texts.iter().flat_map(|t| t.chars()).filter(|c| is_arabic(*c)).collect();
+    chars.into_iter().filter(|c| !faces.iter().any(|m| m.map(*c).is_some())).collect()
+}
+
+/// Font files to look for on each platform, best first: each maps the Arabic block. Windows
+/// always ships Tahoma and Segoe UI; macOS ships Geeza Pro (and Arial in Supplemental); on Linux
+/// the Noto Arabic faces, then the wider-coverage DejaVu and FreeSans.
+fn arabic_candidates() -> Vec<&'static str> {
+    if cfg!(windows) {
+        vec!["tahoma.ttf", "segoeui.ttf", "seguisb.ttf", "arial.ttf"]
+    } else if cfg!(target_os = "macos") {
+        vec!["GeezaPro.ttc", "Supplemental/Baghdad.ttc", "Damascus.ttc", "Nadeem.ttc", "Supplemental/Arial.ttf"]
+    } else {
+        vec![
+            "opentype/noto/NotoSansArabic-Regular.ttf",
+            "noto-sans-arabic/NotoSansArabic-Regular.ttf",
+            "truetype/noto/NotoSansArabic-Regular.ttf",
+            "opentype/noto/NotoNaskhArabic-Regular.ttf",
+            "truetype/noto/NotoNaskhArabic-Regular.ttf",
+            "truetype/dejavu/DejaVuSans.ttf",
+            "truetype/freefont/FreeSans.ttf",
+        ]
+    }
+}
+
+/// The installed font that best covers the Arabic `needed` characters (the Arabic interface
+/// catalog's), if one is found — [`system_cjk_ui_font`] for the Arabic interface. Never panics
+/// on damaged files.
+pub fn system_arabic_ui_font(needed: &[char]) -> Option<SystemUiFont> {
+    let probe = ['\u{0627}']; // ا
+    let needed = if needed.is_empty() { &probe[..] } else { needed.get(..MAX_NEEDED).unwrap_or(needed) };
+    find_ui_font(&with_asset_data(crate::system_font_dirs()), &arabic_candidates(), needed, false)
+}
+
 /// Files larger than this are skipped (the big system CJK collections are around 20–80 MB).
 const MAX_FILE: u64 = 128 << 20;
 /// Faces looked at in one collection.

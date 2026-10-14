@@ -23,6 +23,7 @@ macro_rules! tl {
 pub mod a11y;
 pub mod a11y_pane;
 pub mod backstage;
+pub mod bidi;
 pub mod canvas;
 pub mod caret_glide;
 pub mod chrome;
@@ -384,9 +385,14 @@ pub struct WordApp {
     fonts_hans: bool,
     /// Whether the installed UI fonts include an installed CJK fallback font (#241).
     fonts_system_cjk: bool,
+    /// Whether the installed UI fonts include an installed Arabic font (the Arabic interface).
+    fonts_system_arabic: bool,
     /// CJK text is (about to be) on screen in a non-CJK interface, e.g. the language names in
     /// File ▸ Options: load the installed CJK fallback font if no embedded face covers it.
     pub(crate) want_system_cjk: bool,
+    /// Arabic text is (about to be) on screen in a non-Arabic interface (the language names in
+    /// File ▸ Options): load the installed Arabic font for it, as [`want_system_cjk`] does.
+    pub(crate) want_system_arabic: bool,
     fonts_frames: u32,
     /// The effective interface theme last installed in egui ([`theme::apply`]).
     applied_theme: Option<theme::Appearance>,
@@ -486,7 +492,9 @@ impl WordApp {
             styled: false,
             fonts_hans: false,
             fonts_system_cjk: false,
+            fonts_system_arabic: false,
             want_system_cjk: false,
+            want_system_arabic: false,
             fonts_frames: 0,
             applied_theme: None,
             // Inert until the app binary calls `watch_desktop_theme`.
@@ -1406,10 +1414,13 @@ impl WordApp {
     /// face has changed since the last install.
     fn install_ui_fonts(&mut self, ctx: &egui::Context, lang: i18n::Lang) {
         let system_cjk = self.fonts_system_cjk || self.want_system_cjk || lang.uses_cjk();
-        if !self.styled || lang.prefers_hans() != self.fonts_hans || system_cjk != self.fonts_system_cjk {
-            theme::install_fonts_extra(ctx, lang.prefers_hans(), system_cjk, &self.canvas.ime_faces);
+        let system_arabic = self.fonts_system_arabic || self.want_system_arabic || lang.uses_arabic();
+        if !self.styled || lang.prefers_hans() != self.fonts_hans || system_cjk != self.fonts_system_cjk || system_arabic != self.fonts_system_arabic
+        {
+            theme::install_fonts_extra(ctx, lang.prefers_hans(), system_cjk, system_arabic, &self.canvas.ime_faces);
             self.fonts_hans = lang.prefers_hans();
             self.fonts_system_cjk = system_cjk;
+            self.fonts_system_arabic = system_arabic;
             // Mod with -, = and 0 are Word shortcuts (optional hyphen, subscript, paragraph spacing);
             // egui's keyboard zoom would also scale the whole window on them. Zoom is View › Zoom.
             ctx.options_mut(|o| o.zoom_with_keyboard = false);

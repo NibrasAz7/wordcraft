@@ -136,4 +136,13 @@ impl Catalog {
     pub fn in_context(&self, context: &str, s: &str) -> Option<&str> {
         self.contextual.get(&(context.to_string(), s.to_string())).map(String::as_str).or_else(|| self.plain(s))
     }
+
+    /// Rewrite every translation in place (the right-to-left catalogs put theirs into display
+    /// order at load, see [`crate::bidi::display_rtl`]). Sources stay as they were: they are the
+    /// lookup keys.
+    pub fn map_translations(&mut self, map: impl Fn(&str) -> String) {
+        for v in self.plain.values_mut().chain(self.contextual.values_mut()) {
+            *v = map(v);
+        }
+    }
 }

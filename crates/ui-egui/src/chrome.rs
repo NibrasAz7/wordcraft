@@ -314,10 +314,11 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                     right_start = ui.min_rect().min.x;
                 });
             });
-            // Centred title.
+            // Centred title. The file's name is user text: it is reordered for display, so an
+            // Arabic name shows its parts in reading order.
             let title = format!(
                 "{} — {}",
-                app.title_stem(),
+                crate::bidi::visual(&app.title_stem()),
                 if app.session.dirty {
                     tl!("Edited")
                 } else if app.session.path.is_some() {
